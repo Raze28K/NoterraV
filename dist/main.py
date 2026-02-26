@@ -32,7 +32,7 @@ APP_NAME = "NoterraApp"
 
 
 
-APP_VERSION = "0.9.1"  # твоя текущая версия
+APP_VERSION = "0.9.2"  # твоя текущая версия
 
 def check_update():
     try:
