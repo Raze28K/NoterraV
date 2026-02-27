@@ -15,7 +15,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QPropertyAnimation, QEasingCurve, QDate, QDateTime, QTimer
 from note_card import NoteCard
 from note_card2 import MiniNoteCard
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt,QLocale
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QPropertyAnimation,QEasingCurve,QPoint
 import winreg
@@ -32,7 +32,7 @@ APP_NAME = "NoterraApp"
 
 
 
-APP_VERSION = "0.9.2"  # твоя текущая версия
+APP_VERSION = "0.9.3"  # твоя текущая версия
 
 def check_update():
     try:
@@ -495,6 +495,7 @@ class NoterraApp(QWidget):
       
         self.save_note2 = self.ui.findChild(QPushButton,"Save_note_2")
         self.dataTIME2 = self.ui.findChild(QDateTimeEdit,"TI")
+        self.dataTIME2.setVisible(False)
         
         self.note_full_text_label = self.ui.findChild(QTextEdit, "noteFullTextLabel")
         self.today_note_full_text_label = self.ui.findChild(QTextEdit,"txtb")
@@ -549,7 +550,7 @@ class NoterraApp(QWidget):
         self.frame_note.setVisible(False)
         self.save_note_btn = self.ui.findChild(QPushButton,"Save_note_frame")
         self.close_today_note = self.ui.findChild(QPushButton,"close")
-        self.dataTIME2.setVisible(False)
+        
 
         self.date_time_edit3.setReadOnly(True)
         self.date_time_edit3.setFocusPolicy(Qt.NoFocus)
@@ -564,6 +565,7 @@ class NoterraApp(QWidget):
         self.line2.setCursor(Qt.ArrowCursor)
         self.line2.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.download = self.ui.findChild(QPushButton,"Download")
+        self.save = self.ui.findChild(QPushButton,"save")
 
 
 
@@ -629,6 +631,7 @@ class NoterraApp(QWidget):
         self.poisk = self.ui.findChild(QLabel,"poisk")
         self.poisk2 = self.ui.findChild(QLabel,"poisk_2")
         self.save2 = self.ui.findChild(QPushButton,"save_2")
+
         
         self.calendar2.setVisible(False)
         self.time2.setVisible(False)
@@ -792,18 +795,20 @@ class NoterraApp(QWidget):
 
         
 
-
+        locale = QLocale(QLocale.Russian, QLocale.Russia)
 
 
 
         # ===== Настройки календаря =====
         for m in range(1, 13):
-            self.month_combo.addItem(QDate(2025, m, 1).toString("MMMM"))
+            month_name = locale.monthName(m)  # Возвращает месяц на русском
+            self.month_combo.addItem(month_name)
         for y in range(2025, 2100):
             self.year_combo.addItem(str(y))
 
         for g in range(1,13):
-            self.month.addItem(QDate(2025, g, 1).toString("MMMM"))
+            self.month_name = locale.monthName(g)  # Возвращает месяц на русском
+            self.month.addItem(month_name)
 
         for i in range(2025, 2100):
             self.year.addItem(str(i))
@@ -823,6 +828,7 @@ class NoterraApp(QWidget):
         # self.year.currentIndexChanged.connect(self.update_calendar2)
         self.calendar2.currentPageChanged.connect(self.sync_combos_with_calendar2)
         self.time2.timeChanged.connect(self.update_time_from_timeedit2)
+        
         self.calendar2.setVerticalHeaderFormat(QCalendarWidget.NoVerticalHeader)
 
 
@@ -874,7 +880,14 @@ class NoterraApp(QWidget):
         self.save2.clicked.connect(self.save_note_changes2)
         self.close_today_note.clicked.connect(lambda: self.frame_note.setVisible(False))
         self.calendar2.clicked.connect(self.update_datetime2)
-        self.calendar2.clicked.connect(self.BACKKK3)
+        self.save.clicked.connect(self.BACKKK3)
+        self.save.clicked.connect(self.on_date_selected)
+        self.save.clicked.connect(self.blink_page)
+        
+        
+        
+        
+
         self.time.setReadOnly(False)
         self.search_trash.textChanged.connect(self.hide_label)
         self.search_input.textChanged.connect(self.hide_label2)
@@ -905,7 +918,7 @@ class NoterraApp(QWidget):
     # ====== Функции ======
 
 
-
+    
 
     def load_today_events(self):
         print("load_today_events CALLED")
@@ -1011,7 +1024,7 @@ class NoterraApp(QWidget):
 
 
 
-
+    
     
 
     def update_time_from_combo(self, time_str):
@@ -1050,6 +1063,11 @@ class NoterraApp(QWidget):
         selected_date = self.calendar2.selectedDate()
         old_time = self.time2.time()  # сохраняем текущее время
         self.dataTIME2.setDateTime(QDateTime(selected_date, old_time))
+
+    def time_change(self):
+        current_date = self.dataTIME2.date()
+        old_time = self.time2.time() 
+        self.dataTIME2.setDateTime(QDateTime(current_date, old_time))
 
     
 
@@ -1127,6 +1145,7 @@ class NoterraApp(QWidget):
         
 
     def on_date_selected(self, qdate):
+        
         # эта часть выполняется только после клика
         remind_at = self.dataTIME2.dateTime().toString("dd-MM-yyyy HH:mm")
 
@@ -1140,9 +1159,15 @@ class NoterraApp(QWidget):
         conn.close()
 
         print("DEBUG: дата обновлена")
+        self.MYY()
 
         # перезагружаем заметки
-        self.load_notes()
+    def blink_page(self):
+        current = self.stack.currentIndex()
+
+        self.stack.setCurrentIndex(1)  # переключаемся на другую страницу
+
+        QTimer.singleShot(1, lambda: self.stack.setCurrentIndex(current))
 
     def open_calendar(self, note_id):
         # сохраняем текущий note_id
@@ -1973,7 +1998,13 @@ if __name__ == "__main__":
                 if isinstance(obj, QWindow) and obj.objectName() == "QPushButtonClassWindow":
                     print("Скрываем лишнее окно!")
                     obj.hide()
+            elif event.type() == QEvent.Show:
+                if isinstance(obj, QWindow) and obj.objectName() == "QWidgetClassWindow":
+                    print("Скрываем лишнее окно!")
+                    obj.hide()
+            
             return super().eventFilter(obj, event)
+
 
     debug_filter = DebugFilter()
     app.installEventFilter(debug_filter)
