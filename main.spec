@@ -8,7 +8,7 @@ a = Analysis(
     datas=[('NoterraDark.ui', '.'), ('images', 'images')],
     hiddenimports=[
         'PySide6', 'PySide6.QtWidgets', 'PySide6.QtCore', 'PySide6.QtGui',
-        'PySide6.QtUiTools', 'shiboken6',
+        'PySide6.QtUiTools', 'PySide6.QtNetwork', 'shiboken6',
         'plyer.platforms.win.notification',
         'win10toast_click',
     ],

@@ -60,24 +60,23 @@ class NoteCard(QFrame):
         self.setMinimumWidth(380)
 
         # --- Даты ---
-        done_label_text = QLabel("Дата выполнения:")
-        done_label_text.setStyleSheet("color: #aaa; font-size: 14px; border: none;")
+        self.done_label_text = QLabel("Дата выполнения:")
+        self.done_label_text.setStyleSheet("color: #aaa; font-size: 14px; border: none;")
         date_label = QLabel(remind_at)
         date_label.setObjectName("DateLabel")
 
         done_layout_dates = QHBoxLayout()
-        done_layout_dates.addWidget(done_label_text)
+        done_layout_dates.addWidget(self.done_label_text)
         done_layout_dates.addWidget(date_label)
         done_layout_dates.addStretch()
 
-        created_label = QLabel("Дата создания:")
-        created_label.setStyleSheet("color: #aaa; font-size: 14px; border: none;")
+        self.created_label = QLabel("Дата создания:")
+        self.created_label.setStyleSheet("color: #aaa; font-size: 14px; border: none;")
         date_label2 = QLabel(remind_at2)
         date_label2.setObjectName("DateLabel2")
         date_label2.setContentsMargins(5, 0, 0, 0)
 
         created_layout = QHBoxLayout()
-        created_layout.addWidget(created_label)
         created_layout.addWidget(date_label2)
         created_layout.addStretch()
 

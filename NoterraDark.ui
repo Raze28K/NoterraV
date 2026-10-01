@@ -33,9 +33,107 @@
         <string notr="true"/>
        </property>
        <property name="currentIndex">
-        <number>5</number>
+        <number>0</number>
        </property>
-       <widget class="QWidget" name="ZAS"/>
+       <widget class="QWidget" name="page_2">
+        <widget class="QLabel" name="Khovin">
+         <property name="geometry">
+          <rect>
+           <x>260</x>
+           <y>260</y>
+           <width>521</width>
+           <height>81</height>
+          </rect>
+         </property>
+         <property name="font">
+          <font>
+           <family>Segoe UI Black</family>
+           <pointsize>72</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: rgb(170, 0, 255);</string>
+         </property>
+         <property name="text">
+          <string>KhovinDev</string>
+         </property>
+        </widget>
+       </widget>
+       <widget class="QWidget" name="Donate">
+        <widget class="QLabel" name="label">
+         <property name="geometry">
+          <rect>
+           <x>310</x>
+           <y>60</y>
+           <width>441</width>
+           <height>51</height>
+          </rect>
+         </property>
+         <property name="font">
+          <font>
+           <pointsize>28</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: rgb(170, 85, 255);</string>
+         </property>
+         <property name="text">
+          <string>Поддержите наш проект!</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_2">
+         <property name="geometry">
+          <rect>
+           <x>240</x>
+           <y>500</y>
+           <width>591</width>
+           <height>51</height>
+          </rect>
+         </property>
+         <property name="font">
+          <font>
+           <pointsize>24</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: rgb(170, 85, 255);</string>
+         </property>
+         <property name="text">
+          <string>И обновления будут выходить быстрее!</string>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="Support">
+         <property name="geometry">
+          <rect>
+           <x>320</x>
+           <y>280</y>
+           <width>391</width>
+           <height>41</height>
+          </rect>
+         </property>
+         <property name="font">
+          <font>
+           <family>Segoe UI Black</family>
+           <pointsize>14</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 15px;
+background-color: rgb(46, 47, 49);color: rgb(255, 255, 255);</string>
+         </property>
+         <property name="text">
+          <string>Поддержать проект</string>
+         </property>
+         <property name="icon">
+          <iconset>
+           <normaloff>images/icons/cil-chevron-double-right.png</normaloff>images/icons/cil-chevron-double-right.png</iconset>
+         </property>
+        </widget>
+       </widget>
        <widget class="QWidget" name="HOME">
         <widget class="QLabel" name="label_4">
          <property name="geometry">
@@ -91,7 +189,7 @@ border-radius:15px;</string>
          <property name="geometry">
           <rect>
            <x>310</x>
-           <y>210</y>
+           <y>240</y>
            <width>391</width>
            <height>41</height>
           </rect>
@@ -122,7 +220,7 @@ color: rgb(255, 255, 255);
          <property name="geometry">
           <rect>
            <x>310</x>
-           <y>280</y>
+           <y>300</y>
            <width>391</width>
            <height>41</height>
           </rect>
@@ -151,7 +249,7 @@ background-color: rgb(46, 47, 49);color: rgb(255, 255, 255);</string>
          <property name="geometry">
           <rect>
            <x>310</x>
-           <y>350</y>
+           <y>360</y>
            <width>391</width>
            <height>41</height>
           </rect>
@@ -489,6 +587,35 @@ color: rgb(255, 255, 255);</string>
            <string>Сохранить изменения</string>
           </property>
          </widget>
+        </widget>
+        <widget class="QPushButton" name="Help">
+         <property name="geometry">
+          <rect>
+           <x>360</x>
+           <y>580</y>
+           <width>301</width>
+           <height>41</height>
+          </rect>
+         </property>
+         <property name="font">
+          <font>
+           <family>Segoe UI Black</family>
+           <pointsize>14</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 15px;
+background-color: rgb(46, 47, 49);color: rgb(255, 255, 255);</string>
+         </property>
+         <property name="text">
+          <string>Поддержать нас</string>
+         </property>
+         <property name="icon">
+          <iconset>
+           <normaloff>images/icons/cil-folder-open.png</normaloff>images/icons/cil-folder-open.png</iconset>
+         </property>
         </widget>
        </widget>
        <widget class="QWidget" name="MY">

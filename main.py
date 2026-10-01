@@ -9,28 +9,39 @@ from plyer import notification
 from PySide6.QtWidgets import (
     QApplication, QWidget, QPushButton, QCalendarWidget, QDateTimeEdit,
     QComboBox, QFrame, QTimeEdit, QLineEdit,QTextEdit,QScrollArea,QMessageBox,QLayout,QVBoxLayout,QTextBrowser,
-    QGridLayout,QLabel,QStackedWidget,QHBoxLayout,QSpacerItem,QSizePolicy,QHeaderView,QCompleter
+    QGridLayout,QLabel,QStackedWidget,QHBoxLayout,QSpacerItem,QSizePolicy,QHeaderView,QCompleter,
+    QSystemTrayIcon, QMenu,
 )
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, QPropertyAnimation, QEasingCurve, QDate, QDateTime, QTimer, QStringListModel
+from PySide6.QtCore import QFile, QPropertyAnimation, QEasingCurve, QDate, QDateTime, QTimer, QStringListModel, QEvent,QThread,Qt,QLocale
 from note_card import NoteCard
 from note_card2 import MiniNoteCard
-from PySide6.QtCore import Qt,QLocale
-from PySide6.QtGui import QIcon
-from PySide6.QtCore import QPropertyAnimation,QEasingCurve,QPoint
+
+from PySide6.QtGui import QIcon, QPalette, QColor, QAction, QCloseEvent
+from PySide6.QtCore import QPropertyAnimation,QEasingCurve,QPoint,QVariantAnimation
 import winreg
 import os
+import ctypes
 import subprocess
 import win10toast_click
 from PySide6.QtWidgets import  QAbstractSpinBox
 import requests
 
+
 BACKGROUND_FLAG = "--background" in sys.argv
 OPEN_MY_FLAG = "--open=my" in sys.argv
 APP_NAME = "NoterraApp"
+MUTEX_NAME = "Local\\NoterraApp_v095"
+_instance_mutex = None
+
+def app_dir():
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
 
 def resource_path(*parts):
-    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    base_path = getattr(sys, "_MEIPASS", app_dir())
     return os.path.join(base_path, *parts)
 
 
@@ -43,8 +54,39 @@ def updater_path():
     return os.path.join(base, "Updater.exe")
 
 
-APP_VERSION = "0.9.5"
+APP_VERSION = "1.0.0"
 
+
+def force_dark_theme(app: QApplication) -> None:
+    """Фиксирует тёмную тему UI независимо от системных настроек Windows."""
+    style_hints = app.styleHints()
+    if hasattr(style_hints, "setColorScheme") and hasattr(Qt, "ColorScheme"):
+        style_hints.setColorScheme(Qt.ColorScheme.Dark)
+        return
+
+    palette = app.palette()
+    white = QColor(255, 255, 255)
+    black = QColor(0, 0, 0)
+    sidebar = QColor(46, 47, 49)
+
+    for role in (
+        QPalette.WindowText,
+        QPalette.Text,
+        QPalette.ButtonText,
+        QPalette.BrightText,
+        QPalette.ToolTipText,
+        QPalette.PlaceholderText,
+    ):
+        palette.setColor(role, white)
+
+    for role in (QPalette.Window, QPalette.Base, QPalette.ToolTipBase):
+        palette.setColor(role, black)
+
+    palette.setColor(QPalette.AlternateBase, sidebar)
+    palette.setColor(QPalette.Button, sidebar)
+    palette.setColor(QPalette.Highlight, QColor(170, 85, 255))
+    palette.setColor(QPalette.HighlightedText, white)
+    app.setPalette(palette)
 
 
 def check_update():
@@ -98,14 +140,18 @@ except Exception:
 
 
 
-def add_to_startup():
-    # путь к exe или py
+def get_startup_command():
+    """Команда для реестра автозапуска Windows (с корректными кавычками)."""
     if getattr(sys, "frozen", False):
-        exe_path = sys.executable
-    else:
-        exe_path = f'"{sys.executable}" "{os.path.abspath(sys.argv[0])}"'
+        exe = os.path.abspath(sys.executable)
+        return f'"{exe}" --background'
+    script = os.path.abspath(sys.argv[0])
+    python = os.path.abspath(sys.executable)
+    return f'"{python}" "{script}" --background'
 
-    run_value = f'{exe_path} --background'
+
+def add_to_startup():
+    run_value = get_startup_command()
 
     key = winreg.OpenKey(
         winreg.HKEY_CURRENT_USER,
@@ -115,8 +161,12 @@ def add_to_startup():
     )
 
     try:
-        winreg.QueryValueEx(key, APP_NAME)
-        print("✔ Уже есть в автозапуске")
+        current, _ = winreg.QueryValueEx(key, APP_NAME)
+        if current == run_value:
+            print("✔ Уже есть в автозапуске")
+        else:
+            winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, run_value)
+            print("✔ Обновлено в автозапуске")
     except FileNotFoundError:
         winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, run_value)
         print("✔ Добавлено в автозапуск")
@@ -162,7 +212,7 @@ def is_in_startup():
 
 
 
-DB_NAME = "reminders.db"
+DB_NAME = os.path.join(app_dir(), "reminders.db")
 
 
 # ===== 1. База данных =====
@@ -201,7 +251,7 @@ def init_db():
 
 
 def add_reminder(title, text, remind_at):
-    conn = sqlite3.connect("reminders.db")
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("INSERT INTO reminders (title, text, remind_at) VALUES (?, ?, ?)", (title, text, remind_at))
     conn.commit()
@@ -283,6 +333,41 @@ def reminder_checker():
         time.sleep(30)
 
 
+def signal_file_path():
+    return os.path.join(app_dir(), ".noterra_show")
+
+
+def send_show_signal():
+    cmd = "open=my" if OPEN_MY_FLAG else "show"
+    try:
+        with open(signal_file_path(), "w", encoding="utf-8") as f:
+            f.write(cmd)
+        return True
+    except Exception as e:
+        print("Не удалось отправить сигнал показа окна:", e)
+        return False
+
+
+def try_activate_existing_instance():
+    """Если Noterra уже запущена — оставить сигнал и не стартовать второй процесс."""
+    kernel32 = ctypes.windll.kernel32
+    SYNCHRONIZE = 0x00100000
+    mutex = kernel32.OpenMutexW(SYNCHRONIZE, False, MUTEX_NAME)
+    if not mutex:
+        return False
+    kernel32.CloseHandle(mutex)
+    send_show_signal()
+    return True
+
+
+def acquire_single_instance():
+    """Занять mutex единственного экземпляра на всё время работы приложения."""
+    global _instance_mutex
+    kernel32 = ctypes.windll.kernel32
+    _instance_mutex = kernel32.CreateMutexW(None, True, MUTEX_NAME)
+    return kernel32.GetLastError() != 183
+
+
 # ===== 2. Главное окно =====
 class NoterraApp(QWidget):
     def __init__(self):
@@ -318,7 +403,11 @@ class NoterraApp(QWidget):
             "delete_all":"delete all",
             "Save_note_frame":"Save",
             "poisk":"Search",
-            "poisk_2":"Search"
+            "poisk_2":"Search",
+            "Help":"Support us",
+            "label":"Support us project!",
+            "Support":"Support the project",
+            "label_2":"And updates will be released faster!",
         
             
 
@@ -349,7 +438,11 @@ class NoterraApp(QWidget):
             "delete_all":"удалить всё",
             "poisk_2":"Поиск",
             "poisk":"Поиск",
-            "Save_note_frame":"Сохранить"
+            "Save_note_frame":"Сохранить",
+            "Help":"Поддержать нас",
+            "label":"Поддержите наш проект!",
+            "Support":"Поддержать проект",
+            "label_2":"И обновления будут выходить быстрее!",
 
 
 
@@ -382,7 +475,11 @@ class NoterraApp(QWidget):
             "delete_all":"барлығын жою",
             "poisk":"Іздеу",
             "poisk_2":"Іздеу",
-            "Save_note_frame":"Сақтау"
+            "Save_note_frame":"Сақтау",
+            "Help":"Бізді қолдау",
+            "label":"Біздің жобаны қолдаңыз!",
+            "Support":"Жобаны қолдау",
+            "label_2":"Жаңартулар тезірек шығады!",
 
 
 
@@ -414,7 +511,11 @@ class NoterraApp(QWidget):
             "delete_all":"모두 삭제",
             "poisk":"검색",
             "poisk_2":"검색",
-            "Save_note_frame":"저장"
+            "Save_note_frame":"저장",
+            "Help":"우리를 지원",
+            "label":"우리의 프로젝트를 지원하십시오!",
+            "Support":"프로젝트 지원",
+            "label_2":"업데이트가 더 빨리 나옵니다!",
             
         }
 
@@ -428,6 +529,7 @@ class NoterraApp(QWidget):
         file = QFile(resource_path("NoterraDark.ui"))
         file.open(QFile.ReadOnly)
         self.ui = loader.load(file)
+        self.ui.setWindowTitle("Noterra")
         if not BACKGROUND_FLAG:
             self.ui.show()
         file.close()
@@ -458,6 +560,7 @@ class NoterraApp(QWidget):
         # ===== Виджеты =====
         self.stack = self.ui.findChild(QWidget, "stackedWidget")
         self.Home = self.ui.findChild(QPushButton, "Home")
+        self.Donate = self.ui.findChild(QPushButton, "Help")
         self.Neww = self.ui.findChild(QPushButton, "New")
         self.myy = self.ui.findChild(QPushButton, "My_2")
         self.bac = self.ui.findChild(QPushButton, "Bac")
@@ -484,6 +587,7 @@ class NoterraApp(QWidget):
         self.note_scroll = self.ui.findChild(QScrollArea, "noteScrollArea")
         self.note_container = self.ui.findChild(QWidget, "noteContainer")
         self.note_layout = self.note_container.layout()
+        self.support_btn = self.ui.findChild(QPushButton,"Support")
         
         self.note_layout.setContentsMargins(0, 0, 0, 0)  # убрать лишние отступы
         self.note_layout.setSpacing(10)  
@@ -515,7 +619,8 @@ class NoterraApp(QWidget):
         self.category_completer.setCaseSensitivity(Qt.CaseInsensitive)
         self.category_completer.setCompletionMode(QCompleter.PopupCompletion)
         self.filter_add.setCompleter(self.category_completer)
-
+        self.frame_nav = self.ui.findChild(QFrame,"frame_12")
+        self.khovin = self.ui.findChild(QLabel,"Khovin")
 
         self.version.setText(f"Version--{APP_VERSION}")
         
@@ -576,6 +681,7 @@ class NoterraApp(QWidget):
         self.line2.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.download = self.ui.findChild(QPushButton,"Download")
         self.save = self.ui.findChild(QPushButton,"save")
+
         self.filter.setStyleSheet("""
             QComboBox {
                 border: 1px solid #444;
@@ -772,6 +878,7 @@ class NoterraApp(QWidget):
 
         # ===== Сигналы =====
         self.Home.clicked.connect(self.HOMEE)
+        self.Donate.clicked.connect(self.Donate_screen)
         
         self.Neww.clicked.connect(self.NEWW)
         self.myy.clicked.connect(self.MYY)
@@ -794,6 +901,7 @@ class NoterraApp(QWidget):
         self.save.clicked.connect(self.BACKKK3)
         self.save.clicked.connect(self.on_date_selected)
         self.save.clicked.connect(self.blink_page)
+        self.support_btn.clicked.connect(self.support_func)
         
         
         
@@ -806,9 +914,11 @@ class NoterraApp(QWidget):
         self.textEdiit.textChanged.connect(self.hide_label4)
         self.filter_add.textChanged.connect(self.hide_label5)
         self.download.clicked.connect(check_update)
-        
-        
-        
+        self.frameleft.setVisible(False)
+        self.animate_specific_label(self.khovin)
+       
+        QTimer.singleShot(3500,self.headpics)
+       
                 
         
         if self.menu:
@@ -826,7 +936,9 @@ class NoterraApp(QWidget):
            
 
         self.update_calendar()
-        
+        self.setup_system_tray()
+        self.setup_close_to_tray()
+        self.setup_show_signal_watcher()
 
     # ====== Функции ======
         self.filter.currentIndexChanged.connect(lambda: self.load_notes())
@@ -1072,7 +1184,12 @@ class NoterraApp(QWidget):
         
         
 
+    def support_func(self):
+        webbrowser.open("https://www.donationalerts.com/r/raze2810")
+        self.animate_button(self.support_btn)
+
     def on_date_selected(self, qdate):
+
         
         # эта часть выполняется только после клика
         remind_at = self.dataTIME2.dateTime().toString("dd-MM-yyyy HH:mm")
@@ -1176,14 +1293,19 @@ class NoterraApp(QWidget):
 
 
     def HOMEE(self):
-        self.stack.setCurrentIndex(1)
+        self.stack.setCurrentIndex(2)
         self.animate_button(self.Home)
         self.load_today_events()
         self.load_notes()
 
+    def Donate_screen(self):
+        self.stack.setCurrentIndex(1)
+        self.animate_button(self.Donate)
+
+
     def NEWW(self):
         self.date_time_edit.setDateTime(QDateTime.currentDateTime())
-        self.stack.setCurrentIndex(5)
+        self.stack.setCurrentIndex(6)
         self.animate_button(self.Neww)
 
     
@@ -1210,7 +1332,7 @@ class NoterraApp(QWidget):
 
     def Bs(self):
         self.animate_button(self.bss)
-        self.stack.setCurrentIndex(3)
+        self.stack.setCurrentIndex(4)
         self.load_trash()
 
     def Save_note(self):
@@ -1366,15 +1488,23 @@ class NoterraApp(QWidget):
             if self.language == "en":
                 card.change_date_btn.setText("Change date")
                 card.done_label.setText("Complete")
+                card.done_label_text.setText("Completion date:")
+                card.created_label.setText("Created date:")
             elif self.language == "ru":
                 card.change_date_btn.setText("Изменить дату")
                 card.done_label.setText("Выполнено")
+                card.done_label_text.setText("Дата выполнения:")
+                card.created_label.setText("Дата создания:")
             elif self.language == "qaz":
                 card.change_date_btn.setText("Күнді өзгерту")
                 card.done_label.setText("Орындалды")
+                card.done_label_text.setText("Аяқталу күні:")
+                card.created_label.setText("Жасалған күні:")
             elif self.language == "corean":
                 card.change_date_btn.setText("날짜 변경")
                 card.done_label.setText("완료됨")
+                card.done_label_text.setText("완료 예정일:")
+                card.created_label.setText("생성 날짜:")
 
             # ---------- ADD TO GRID ----------
             self.note_layout.addWidget(card, row, 0)
@@ -1509,7 +1639,7 @@ class NoterraApp(QWidget):
         self.filter.clear()
         self.filter.addItem("All")
 
-        conn = sqlite3.connect("reminders.db")
+        conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -1558,7 +1688,7 @@ class NoterraApp(QWidget):
         trash_notes = c.fetchall()
         conn.close()
 
-        for note_id, title, text, remind_at, remind_at2, isDone in trash_notes:
+        for note_id, title, text, remind_at, remind_at2, isDone,category in trash_notes:
 
             def restore_func(n_id):
                 def inner():
@@ -1617,7 +1747,7 @@ class NoterraApp(QWidget):
         self.month.setCurrentIndex(month2 - 1)
 
     def SETT(self):
-        self.stack.setCurrentIndex(4)
+        self.stack.setCurrentIndex(5)
         self.animate_button(self.setng)
 
     def engg(self):
@@ -1711,11 +1841,32 @@ class NoterraApp(QWidget):
         self.load_trash()
 
     def MYY(self):
-        self.stack.setCurrentIndex(2)
+        self.stack.setCurrentIndex(3)
         self.animate_button(self.myy)
         self.load_notes()
 
-    
+    def headpics(self):
+        self.stack.setCurrentIndex(2)
+        self.frameleft.setVisible(True)
+
+        
+    def animate_specific_label(self, label_widget):
+
+    # 1. Создаем анимацию. Привязываем к label_widget, чтобы память управлялась корректно
+        self.color_anim = QVariantAnimation(label_widget)
+        self.color_anim.setDuration(500)  # 1 секунда
+        
+        self.color_anim.setStartValue(QColor("White"))
+        self.color_anim.setEndValue(QColor("#aa00ff"))
+        
+        # 2. МЕХАНИЗМ ПРИВЯЗКИ: Применяем цвет именно к тому лейблу, который передали
+        self.color_anim.valueChanged.connect(
+            lambda color: label_widget.setStyleSheet(f"color: {color.name()}; font-size: 90px;")
+        )
+        
+        # 3. Запускаем
+        self.color_anim.start()
+
 
     def search_notes(self):
         text = self.search_input.text().strip()  # убираем пробелы
@@ -1866,8 +2017,8 @@ class NoterraApp(QWidget):
         note = c.fetchone()
 
         if note:
-            title, text, remind_at, remind_at2 = note
-            c.execute("INSERT INTO reminders (title, text, remind_at,remind_at2) VALUES (?, ?, ?, ?)", (title, text, remind_at,remind_at2))
+            title, text, remind_at, remind_at2,category = note
+            c.execute("INSERT INTO reminders (title, text, remind_at,remind_at2,category) VALUES (?, ?, ?, ?, ?)", (title, text, remind_at,remind_at2,category))
             c.execute("DELETE FROM trash WHERE id = ?", (trash_id,))
 
         conn.commit()
@@ -2000,19 +2151,119 @@ class NoterraApp(QWidget):
                 if name in self.translations[lang] and hasattr(w, "setText"):
                     w.setText(self.translations[lang][name])
 
+    def setup_system_tray(self):
+        icon = QIcon(resource_path("images", "icons", "Frame 1.png"))
+        self.tray_icon = QSystemTrayIcon(icon, self)
+        self.tray_icon.setToolTip("Noterra")
+
+        menu = QMenu()
+        show_action = QAction("Открыть Noterra", self)
+        quit_action = QAction("Выход", self)
+        show_action.triggered.connect(self.show_main_window)
+        quit_action.triggered.connect(self.quit_app)
+        menu.addAction(show_action)
+        menu.addAction(quit_action)
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+        if BACKGROUND_FLAG and not OPEN_MY_FLAG:
+            self.tray_icon.showMessage(
+                "Noterra",
+                "Работает в фоне — уведомления придут вовремя.",
+                QSystemTrayIcon.Information,
+                3000,
+            )
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.show_main_window()
+
+    def show_main_window(self):
+        self.ui.setWindowState(
+            (self.ui.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive
+        )
+        self.ui.show()
+        self.ui.raise_()
+        self.ui.activateWindow()
+        try:
+            hwnd = int(self.ui.winId())
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+
+    def show_my_notes(self):
+        self.show_main_window()
+        try:
+            self.stack.setCurrentIndex(2)
+        except Exception as e:
+            print("Не удалось переключиться на 'Мои заметки':", e)
+
+    def quit_app(self):
+        if hasattr(self, "tray_icon"):
+            self.tray_icon.hide()
+        QApplication.quit()
+
+    def setup_close_to_tray(self):
+        def close_to_tray(event: QCloseEvent):
+            event.ignore()
+            self.ui.hide()
+            if hasattr(self, "tray_icon"):
+                self.tray_icon.showMessage(
+                    "Noterra",
+                    "Свёрнуто в трей. Уведомления продолжают работать.",
+                    QSystemTrayIcon.Information,
+                    2500,
+                )
+
+        self.ui.closeEvent = close_to_tray
+
+    def setup_show_signal_watcher(self):
+        self._signal_timer = QTimer(self)
+        self._signal_timer.timeout.connect(self._check_show_signal)
+        self._signal_timer.start(250)
+        QTimer.singleShot(0, self._check_show_signal)
+
+    def _check_show_signal(self):
+        path = signal_file_path()
+        if not os.path.isfile(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                cmd = f.read().strip()
+            os.remove(path)
+        except Exception:
+            return
+
+        if cmd == "open=my":
+            self.show_my_notes()
+        else:
+            self.show_main_window()
 
 
 if __name__ == "__main__":
+    os.chdir(app_dir())
     init_db()
 
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+
+    if try_activate_existing_instance():
+        sys.exit(0)
+
+    if not acquire_single_instance():
+        send_show_signal()
+        sys.exit(0)
+
+    force_dark_theme(app)
+
     window = NoterraApp()
 
     # --- Устанавливаем фильтр событий ---
-    from PySide6.QtCore import QObject, QEvent
+    from PySide6.QtCore import QObject
     from PySide6.QtGui import QWindow
-    check_update()
     if not BACKGROUND_FLAG:
+        check_update()
         add_to_startup()
 
     class DebugFilter(QObject):
